@@ -1,0 +1,256 @@
+<html>
+
+<head>
+  <style>
+    body {
+      font-family: arial;
+      margin-left: .5in;
+      display: flex;
+    }
+
+    #formContainer {
+      display: flex;
+      flex-direction: column;
+      width: 60%;
+    }
+
+    p {
+      margin-top: 0;
+    }
+
+    h1 {
+      font-size: 14pt;
+    }
+
+    input {
+      margin-top: 2px;
+      margin-bottom: 2px;
+    }
+
+    #viewer {
+      width:40%;
+      margin-left: 20px;
+    }
+
+    .formLabel {
+      font-weight: bold;
+      font-size: smaller;
+    }
+
+    .formField {
+      margin-bottom: 14px;
+    }
+
+    button {
+      margin-bottom:  14px;
+    }
+
+    .help {
+      font-size:smaller;
+    }
+
+    .logResult {
+      font-size: smaller;
+    }
+
+    .inputForm {
+      margin-top: 4px;
+      margin-bottom: 4px;
+    }
+
+    .formMessage {
+      font-size: smaller;
+    }
+
+    .disclosure {
+      font-size: larger;
+      text-decoration: none;
+      color: black;
+    }
+
+    ul {
+      list-style-type: none;
+      padding-left: 1em;
+    }
+
+    .jsontree_value-wrapper {
+      overflow: hidden
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="formContainer">
+
+    <h1>
+      Sync Hypothesis annotation to Zotero
+    </h1>
+
+    <div class="formField" id="tokenContainer"></div>
+    <div class="formField" id="zoteroUserContainer"></div>
+    <div class="formField" id="zoteroApiKeyContainer"></div>
+
+    <div><button onclick="sync()">sync</button></div>
+
+    <div class="help">
+      <hr>
+      <p>
+        This tool reads your Zotero library, finds items imported by URL, looks for 
+        associated Hypothesis annotations, and syncs them to Zotero as child notes.
+      </p>
+      <p>Existing annotations added to Hypothesis will sync to Zotero.
+      <p>If you resync with no changes in Zotero or Hypothesis, nothing will happen.
+      <p>If you delete a Hypothesis-synced note from Zotero, then resync, it will reappear.
+      <p>If you update an annotation in Hypothesis, it won't resync to Zotero unless you delete the corresponding note in Zotero.
+      <p>Only top-level annotations will sync, replies are ignored.  
+      </ul>
+
+    </div>
+
+
+  </div>
+
+  <div id="viewer"></div>
+
+  <script src="https://jonudell.info/hlib/hlib.js"></script>
+  <script src="https://jonudell.info/hlib/jsonTree.js"></script>
+  <link href="https://jonudell.info/hlib/jsonTree.css" rel="stylesheet" />
+
+  <script>
+    function createNamedInputForm(e, longName, shortName, value, onChange, type, msg) {
+      var form =
+        `
+<div class="formLabel">${longName}</div>
+<div class="${shortName}Form"><input onchange="${onChange}()" value="${value}" type="${type}" id="${shortName}Form"></input></div>
+<div class="formMessage">${msg}</div>`;
+      e.innerHTML += form;
+    }
+
+    function setZoteroApiKey() {
+      setLocalStorageFromForm('zoteroApiKeyForm', 'h_zoteroApiKey');
+    }
+
+    function getZoteroApiKey() {
+      return getFromUrlParamOrLocalStorage('h_zoteroApiKey')
+    }
+
+    function setZoteroUserId() {
+      setLocalStorageFromForm('zoteroUserIdForm', 'h_zoteroUserId');
+    }
+
+    function getZoteroUserId() {
+      return getFromUrlParamOrLocalStorage('h_zoteroUserId')
+    }
+
+    function sync() {
+      var start = 0;
+      var url = `https://www.zotero.org/api/users/${getZoteroUserId()}/items?start=${start}`;
+      zoteroSearch(url, start, processSearchResults, []);
+    }
+
+    function zoteroSearch(url, start, callback, results) {
+
+      getById('viewer').innerHTML = '<p>retrieving zotero items</p>';
+
+      var opts = {
+        method: 'get',
+        url:`https://www.zotero.org/api/users/${getZoteroUserId()}/items?limit=50&start=${start}`,
+        headers: {
+          "Zotero-API-Key": `${getZoteroApiKey()}`,
+        },
+      };
+
+      httpRequest(opts)
+        .then ( function (data) {
+          var items = JSON.parse(data.response);
+          items.forEach(function (item) {
+            //console.log(item.data.itemType, item.data.title, item.data.key, item.data.parentItem);
+            var result = {
+              key: item.key,
+              version: item.version,
+              doi: ( item.data.DOI ? item.data.DOI : null ),
+              title: item.data.title,
+              url: item.data.url,
+              itemType: item.data.itemType,
+            }
+            results.push(result);
+          });
+          var total = data.headers['total-results'];
+          if ( total && results.length >= parseInt(total) ) {
+            results = results.filter(x => x.itemType != 'attachment' && x.itemType != 'note' );
+            callback (results);
+          }
+          else {
+            start += 50;
+            getById('viewer').innerHTML += `<div>${start}</div>`;
+            zoteroSearch(url, start, callback, results);
+          }
+      });
+    }
+
+    function processSearchResults(results) {
+        var worker = new Worker('fetchAnnotations.js');
+        var workerResults = {};
+        worker.addEventListener('message', function (e) {
+          var key = e.data.key;
+          getById('viewer').innerHTML = `<p>retrieving annotations for ${key}</p>`;
+          workerResults[key] = e.data;
+          workerResultCount = Object.keys(workerResults).length;
+          if ( workerResultCount == results.length) {
+            worker.terminate();
+            getById('viewer').innerHTML = '<p>added these annotations:</p>';
+            postNotes(workerResults);
+          }
+        });
+
+      results.forEach(function (result) {
+        if ( result.doi == null && ! result.url )  {
+          return;
+        }
+        worker.postMessage({
+          doi: result.doi,
+          zoteroInfo: result,
+          token: getToken(),
+        });
+      });
+    }
+
+    function postNotes(workerResults) {
+
+      var worker = new Worker('postNotes.js');
+      var keys = Object.keys(workerResults);
+      keysWithAnnotations = keys.filter(x => workerResults[x].hypothesisTotal > 0);
+
+        worker.addEventListener('message', function (e) {
+          getById('viewer').innerHTML += `<div class="logResult">${e.data}</div>`;
+      });
+
+      keysWithAnnotations.forEach(function(key) {
+        worker.postMessage({
+          zoteroUserId: getZoteroUserId(),
+          zoteroApiKey: getZoteroApiKey(),
+          workerResult: workerResults[key],
+        });
+      });
+    }
+
+    var tokenContainer = getById('tokenContainer');
+    createApiTokenInputForm(tokenContainer);
+
+    var zoteroUserContainer = getById('zoteroUserContainer');
+    createNamedInputForm(zoteroUserContainer, 'Zotero Numeric User ID', 'zoteroUserId', getZoteroUserId(), 'setZoteroUserId',
+      '', 'Zotero numeric user id from <a href="https://www.zotero.org/settings/keys">https://www.zotero.org/settings/keys</a>'
+    )
+
+    var zoteroApiKey = getById('zoteroApiKeyContainer');
+    createNamedInputForm(zoteroApiKey, 'Zotero API Key', 'zoteroApiKey', getZoteroApiKey(), 'setZoteroApiKey',
+      'password', 'Zotero API key from <a href="https://www.zotero.org/settings/keys">https://www.zotero.org/settings/keys</a>');
+
+    var viewer = document.getElementById("viewer");
+   
+    </script>
+
+</body>
+
+</html>
