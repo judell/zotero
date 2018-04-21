@@ -1,13 +1,15 @@
 self.importScripts("https://jonudell.info/hlib/hlib.js");
 self.importScripts("https://jonudell.info/hlib/showdown.js");
 
-function postNote(key, version, zoteroUserId, zoteroApiKey, annoId, annoUser, annoText) {
-
+function postNote(key, version, zoteroUserId, zoteroApiKey, anno) {
+  debugger;
   var converter = new Showdown.converter();
-  var body = converter.makeHtml(annoText);
+  var quote = anno.quote != '' ? `<blockquote>${anno.quote}</blockquote>` : '';
+  var body = converter.makeHtml(anno.text);
 
   var html = `
-    <p>Hypothesis <a href="https://hyp.is/${annoId}">annotation</a> by ${annoUser}</p>
+    <p>Hypothesis <a href="https://hyp.is/${anno.id}">annotation</a> by ${anno.user}</p>
+      ${quote}
       ${body}
     `;
 
@@ -35,7 +37,7 @@ function postNote(key, version, zoteroUserId, zoteroApiKey, annoId, annoUser, an
 
   httpRequest(opts)
     .then(function (data) {
-      self.postMessage(`${annoUser}, <a href="https://hyp.is/${annoId}">${annoId}</a>`);
+      self.postMessage(`${anno.user}, <a href="https://hyp.is/${anno.id}">${anno.id}</a>`);
     });
 }
 
@@ -61,7 +63,7 @@ self.addEventListener('message', function (e) {
         children = children.filter(x => x.data.itemType == 'note');
         children = children.filter(x => x.data.note.indexOf(`https://hyp.is/${anno.id}`) != -1 );
         if ( children.length == 0 ) {
-          postNote(key, version, zoteroUserId, zoteroApiKey, anno.id, anno.user, anno.text) ;
+          postNote(key, version, zoteroUserId, zoteroApiKey, anno) ;
         }
       });
   });
