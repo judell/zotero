@@ -118,14 +118,6 @@
   <link href="https://jonudell.info/hlib/jsonTree.css" rel="stylesheet" />
 
   <script>
-    function createNamedInputForm(e, longName, shortName, value, onChange, type, msg) {
-      var form =
-        `
-<div class="formLabel">${longName}</div>
-<div class="${shortName}Form"><input onchange="${onChange}()" value="${value}" type="${type}" id="${shortName}Form"></input></div>
-<div class="formMessage">${msg}</div>`;
-      e.innerHTML += form;
-    }
 
     function setZoteroApiKey() {
       setLocalStorageFromForm('zoteroApiKeyForm', 'h_zoteroApiKey');
