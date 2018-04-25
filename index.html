@@ -108,7 +108,6 @@
 
     </div>
 
-
   </div>
 
   <div id="viewer"></div>
@@ -118,6 +117,16 @@
   <link href="https://jonudell.info/hlib/jsonTree.css" rel="stylesheet" />
 
   <script>
+
+    function logWrite(msg) {
+      console.log(msg);
+      getById('viewer').innerHTML = `<div>${msg}</div>`;
+    }
+
+    function logAppend(msg) {
+      console.log(msg);
+      getById('viewer').innerHTML += `<div>${msg}</div>`;
+    }
 
     function setZoteroApiKey() {
       setLocalStorageFromForm('zoteroApiKeyForm', 'h_zoteroApiKey');
@@ -138,12 +147,10 @@
     function sync() {
       var start = 0;
       var url = `https://www.zotero.org/api/users/${getZoteroUserId()}/items?start=${start}`;
-      zoteroSearch(url, start, processSearchResults, []);
+      zoteroSearch(url, start, processZoteroSearchResults, []);
     }
 
-    function zoteroSearch(url, start, callback, results) {
-
-      getById('viewer').innerHTML = '<p>retrieving zotero items</p>';
+    function zoteroSearch(url, start, callback, zoteroSearchResults) {
 
       var opts = {
         method: 'get',
@@ -157,7 +164,6 @@
         .then ( function (data) {
           var items = JSON.parse(data.response);
           items.forEach(function (item) {
-            //console.log(item.data.itemType, item.data.title, item.data.key, item.data.parentItem);
             var result = {
               key: item.key,
               version: item.version,
@@ -166,65 +172,92 @@
               url: item.data.url,
               itemType: item.data.itemType,
             }
-            results.push(result);
+            zoteroSearchResults.push(result);
           });
           var total = data.headers['total-results'];
-          if ( total && results.length >= parseInt(total) ) {
-            results = results.filter(x => x.itemType != 'attachment' && x.itemType != 'note' );
-            callback (results);
+          logWrite(`fetching ${total} zotero items, got ${zoteroSearchResults.length} so far`);
+          if ( total && zoteroSearchResults.length >= parseInt(total) ) {
+            logWrite (`got ${total} zotero items`);
+            zoteroSearchResults = zoteroSearchResults.filter(x => x.itemType != 'attachment' && x.itemType != 'note' );
+            logWrite (`filtering out attachments and notes leaves ${zoteroSearchResults.length} zotero items`);
+            callback (zoteroSearchResults);
           }
           else {
             start += 50;
-            getById('viewer').innerHTML += `<div>${start}</div>`;
-            zoteroSearch(url, start, callback, results);
+            zoteroSearch(url, start, callback, zoteroSearchResults);
           }
+      })
+      .catch ( e => {
+        console.log(e);
       });
     }
 
-    function processSearchResults(results) {
-        var worker = new Worker('fetchAnnotations.js');
-        var workerResults = {};
-        worker.addEventListener('message', function (e) {
-          var key = e.data.key;
-          getById('viewer').innerHTML = `<p>retrieving annotations for ${key}</p>`;
-          workerResults[key] = e.data;
-          workerResultCount = Object.keys(workerResults).length;
-          if ( workerResultCount == results.length) {
-            worker.terminate();
-            getById('viewer').innerHTML = '<p>added these annotations:</p>';
-            postNotes(workerResults);
-          }
-        });
+    function processZoteroSearchResults(zoteroSearchResults) {
 
-      results.forEach(function (result) {
-        if ( result.doi == null && ! result.url )  {
-          return;
+      logWrite (`processing ${zoteroSearchResults.length} zotero search results`);
+      //results = results.filter(x => x.doi != null && x.url );
+      //console.log(`filtering out results with neither a doi nor a url leaves ${results.zoteroSearchResults`);
+      var fetchWorker = new Worker('fetchAnnotations.js');
+      var fetchWorkerResults = {};
+
+      function proceedToPostNotes() {
+        fetchWorker.terminate();
+        postNotes(fetchWorkerResults);
+      }
+
+      fetchWorker.addEventListener('message', function (e) {
+        var key = e.data.key;
+        var url = e.data.url;
+        fetchWorkerResults[key] = e.data;
+        fetchWorkerResultCount = Object.keys(fetchWorkerResults).length;
+        logWrite (`fetchWorker got response #${fetchWorkerResultCount} of ${zoteroSearchResults.length} expected`);
+        if ( fetchWorkerResultCount == zoteroSearchResults.length) {
+          logWrite (`all ${fetchWorkerResultCount} messages received from fetchWorker, calling postWorker`);
+          proceedToPostNotes();
         }
-        worker.postMessage({
-          doi: result.doi,
-          zoteroInfo: result,
+      });
+
+      zoteroSearchResults.forEach(function (zoteroSearchResult) {
+        fetchWorker.postMessage({
+          doi: zoteroSearchResult.doi,
+          zoteroInfo: zoteroSearchResult,
           token: getToken(),
         });
       });
     }
 
-    function postNotes(workerResults) {
+    function postNotes(fetchWorkerResults) {
 
-      var worker = new Worker('postNotes.js');
-      var keys = Object.keys(workerResults);
-      keysWithAnnotations = keys.filter(x => workerResults[x].hypothesisTotal > 0);
+      var timeoutSecs = 30;
 
-        worker.addEventListener('message', function (e) {
-          getById('viewer').innerHTML += `<div class="logResult">${e.data}</div>`;
+      logWrite('');
+
+      var postWorker = new Worker('postNotes.js');
+      var keys = Object.keys(fetchWorkerResults);
+
+      setTimeout(function() {
+        logWrite( `postWorker timeout reached, sync done` );
+        postWorker.terminate();
+      }, timeoutSecs * 1000);
+
+      logWrite ( `postNotes got ${keys.length} fetchWorker results`);
+      keysWithAnnotations = keys.filter(x => fetchWorkerResults[x].hypothesisTotal > 0);
+      logWrite ( `postNotes filtered fetchWorker results to ${keysWithAnnotations} with annotations`);
+      logWrite ( `postNotes checking for unsynced annotations`);
+
+      postWorker.addEventListener('message', function (e) {
+          logAppend ( `${e.data}`);
       });
 
       keysWithAnnotations.forEach(function(key) {
-        worker.postMessage({
+        postWorker.postMessage({
           zoteroUserId: getZoteroUserId(),
           zoteroApiKey: getZoteroApiKey(),
-          workerResult: workerResults[key],
+          workerResult: fetchWorkerResults[key],
         });
       });
+
+      self.logAppend ( `postNotes done, waiting for postWorker, will timeout in ${timeoutSecs} seconds`);
     }
 
     var tokenContainer = getById('tokenContainer');
@@ -233,7 +266,7 @@
     var zoteroUserContainer = getById('zoteroUserContainer');
     createNamedInputForm(zoteroUserContainer, 'Zotero Numeric User ID', 'zoteroUserId', getZoteroUserId(), 'setZoteroUserId',
       '', 'Zotero numeric user id from <a href="https://www.zotero.org/settings/keys">https://www.zotero.org/settings/keys</a>'
-    )
+    );
 
     var zoteroApiKey = getById('zoteroApiKeyContainer');
     createNamedInputForm(zoteroApiKey, 'Zotero API Key', 'zoteroApiKey', getZoteroApiKey(), 'setZoteroApiKey',
