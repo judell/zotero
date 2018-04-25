@@ -1,80 +1,19 @@
 <html>
 
 <head>
+  <link rel="stylesheet" href="https://jonudell.info/hlib/hlib.css">
   <style>
     body {
-      font-family: arial;
-      margin-left: .5in;
       display: flex;
-    }
-
-    #formContainer {
-      display: flex;
-      flex-direction: column;
-      width: 60%;
-    }
-
-    p {
-      margin-top: 0;
     }
 
     h1 {
       font-size: 14pt;
     }
 
-    input {
-      margin-top: 2px;
-      margin-bottom: 2px;
-    }
-
     #viewer {
       width:40%;
       margin-left: 20px;
-    }
-
-    .formLabel {
-      font-weight: bold;
-      font-size: smaller;
-    }
-
-    .formField {
-      margin-bottom: 14px;
-    }
-
-    button {
-      margin-bottom:  14px;
-    }
-
-    .help {
-      font-size:smaller;
-    }
-
-    .logResult {
-      font-size: smaller;
-    }
-
-    .inputForm {
-      margin-top: 4px;
-      margin-bottom: 4px;
-    }
-
-    .formMessage {
-      font-size: smaller;
-    }
-
-    .disclosure {
-      font-size: larger;
-      text-decoration: none;
-      color: black;
-    }
-
-    ul {
-      list-style-type: none;
-      padding-left: 1em;
-    }
-
-    .jsontree_value-wrapper {
-      overflow: hidden
     }
   </style>
 </head>
@@ -257,7 +196,7 @@
         });
       });
 
-      self.logAppend ( `postNotes done, waiting for postWorker, will timeout in ${timeoutSecs} seconds`);
+      self.logAppend ( `postNotes done, waiting for postWorker messages, will timeout in ${timeoutSecs} seconds`);
     }
 
     var tokenContainer = getById('tokenContainer');
