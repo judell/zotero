@@ -12,3 +12,5 @@ If you delete a Hypothesis-synced note from Zotero, then resync, it will reappea
 If you update an annotation in Hypothesis, it won't resync to Zotero unless you delete the corresponding note in Zotero.
 
 Only top-level annotations will sync, replies are ignored.
+
+Uses https://github.com/judell/hlib
