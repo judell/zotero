@@ -1,8 +1,12 @@
+// this web worker imports hypothesis annotations into zotero as child notes
+// it adds a zotero tag to each imported note like 'hypothesis-BvFJGPmpRd-7d6g7_sOpFg'
+
+debugger;
+
 self.importScripts("https://jonudell.info/hlib/hlib.js");
 self.importScripts("https://jonudell.info/hlib/showdown.js");
 
-function postNote(key, version, zoteroUserId, zoteroApiKey, anno) {
-  self.postMessage (`postWorker posting note for ${key}, ${anno.id}`);
+function importAnnotation(key, version, zoteroUserId, zoteroApiKey, anno) {
   var converter = new Showdown.converter();
   var quote = anno.quote != '' ? `<blockquote>${anno.quote}</blockquote>` : '';
   var body = converter.makeHtml(anno.text);
@@ -13,70 +17,78 @@ function postNote(key, version, zoteroUserId, zoteroApiKey, anno) {
       ${body}
     `;
 
+  // params for the zotero api call to create a hypothesis-derived child note
   var params = [
     {
       "parentItem" : key,
       "itemType" : "note",
       "note" : html,
-      "tags" : [],
+      "tags" : ['hypothesis-'+anno.id].concat(anno.tags),
       "collections" : [],
       "relations" : {}
     }
   ];
 
-  var apiCall = `https://www.zotero.org/api/users/${zoteroUserId}/items/`;
+  var zoteroApiCall = `https://www.zotero.org/api/users/${zoteroUserId}/items/`;
 
   var opts = {
     method: 'post',
-    url: apiCall,
+    url: zoteroApiCall,
     params: JSON.stringify(params),
     headers: {
       "Zotero-API-Key": `${zoteroApiKey}`,
     },
   }
 
-  httpRequest(opts)
-    .then(function (data) {
-      self.postMessage(`postWorker added ${anno.user}, <a href="https://hyp.is/${anno.id}">${anno.id}</a>`);
-    });
+  // call zotero api to import a hypothesis-derived child note
+  return httpRequest(opts);
 }
 
+var zoteroItemTotal;
+var zoteroItemCounter = 0;
+var importedAnnoTotal = 0;
+
+// listen for requests to import annotations for a zotero item
 self.addEventListener('message', function (e) {
+  zoteroItemTotal = e.data.total; // each message has the same total
+
+  self.postMessage(`checking for new annotations on zotero item ${zoteroItemCounter+1} of ${zoteroItemTotal}`);
   var zoteroUserId = e.data.zoteroUserId;
   var zoteroApiKey = e.data.zoteroApiKey;
-  var key = e.data.workerResult.key;
-  var url = e.data.workerResult.url;
-  var title = e.data.workerResult.title;
-  var version = e.data.workerResult.version;
-  var annos = e.data.workerResult.hypothesisAnnos.rows;
-  console.log (`postWorker received message for ${key} ${url}, with ${annos.length} annotations`);
-  annos = annos.filter(x => ! x.hasOwnProperty('references'));
-  //console.log (`postWorker filtering out replies leaves ${annos.length} top-level annotations`);
-  annos.forEach( function(anno) {
-    anno = parseAnnotation(anno);
-    var opts = {
-      method: 'get',
-      url:`https://www.zotero.org/api/users/${zoteroUserId}/items/${key}/children`,
-      headers: {
-        "Zotero-API-Key": `${zoteroApiKey}`,
-      },
-    };
-    console.log(`postWorker checking for existing zotero note on ${key} ${title} for ${anno.id}`);
-    httpRequest(opts)
-      .then ( function(data) {
-        var children = JSON.parse(data.response);
-        //console.log (`postWorker found ${children.length} items for ${key} ${title}`);
-        children = children.filter(x => x.data.itemType == 'note');
-        //console.log (`postWorker filtered items to just notes, leaving ${children.length}`);
-        children = children.filter(x => x.data.note.indexOf(`https://hyp.is/${anno.id}`) != -1);
-        if ( children.length == 0 ) {
-          console.log (`postWorker found no existing zotero notes on ${key} for ${anno.id}, so posting`);
-          postNote(key, version, zoteroUserId, zoteroApiKey, anno) ;
+  var key = e.data.annotationsToImport.key;
+  var version = e.data.annotationsToImport.version;
+  var rows = e.data.annotationsToImport.hypothesisAnnos.rows;
+
+  let annoCount = 0;
+  rows.forEach( function(row) {
+    var anno = parseAnnotation(row); 
+    importAnnotation(key, version, zoteroUserId, zoteroApiKey, anno)
+      .then( () =>  {
+        let user = `${anno.user}`.replace('acct:','').replace('@hypothes.is','');
+        self.postMessage(`imported: ${user}, <a href="https://hyp.is/${anno.id}">${anno.id}</a>`);
+        importedAnnoTotal += 1;
+        annoCount += 1;
+        if ( annoCount == rows.length ) {
+          if (zoteroItemCounter == zoteroItemTotal) {
+            reportDone(importedAnnoTotal);
+          }
         }
       })
-      .catch( e => {
-        self.postMessage(`postWorker promise rejected for ${JSON.stringify(opts)}, ${JSON.stringify(e)}`);
+      .catch( e =>  {
+        self.postMessage(e);
       });
   });
+
+  zoteroItemCounter += 1;
+
+  if ( rows.length == 0 && zoteroItemCounter == zoteroItemTotal ) {
+    reportDone(importedAnnoTotal);
+  }
+  
 });
+
+function reportDone(importedAnnoTotal) {
+  self.postMessage(`imported ${importedAnnoTotal} annotations`);
+  self.postMessage('done');
+}
 

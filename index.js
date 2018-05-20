@@ -24,17 +24,23 @@ function getZoteroUserId() {
   return getFromUrlParamOrLocalStorage('h_zoteroUserId')
 }
 
+// main entry point, wired to sync button
 function sync() {
-  var start = 0;
-  var url = `https://www.zotero.org/api/users/${getZoteroUserId()}/items?start=${start}`;
-  zoteroSearch(url, start, processZoteroSearchResults, []);
+  var offset = 0; 
+  var url = `https://www.zotero.org/api/users/${getZoteroUserId()}/items?start=${offset}`; 
+  collectZoteroItems(url, offset, [], [], processZoteroItems);
 }
 
-function zoteroSearch(url, start, callback, zoteroSearchResults) {
+// url: zotero item enumerator
+// offset: for api paging
+// zoteroItems: accumulator for items in the zotero library
+// hypothesisNotes: subset of items that are notes imported from hypothesis
+// processZoteroItems: handler called when all items collected
+ function collectZoteroItems(url, offset, zoteroItems, hypothesisNotes, processZoteroItems) {
 
   var opts = {
     method: 'get',
-    url: `https://www.zotero.org/api/users/${getZoteroUserId()}/items?limit=50&start=${start}`,
+    url: `https://www.zotero.org/api/users/${getZoteroUserId()}/items?limit=50&start=${offset}`,
     headers: {
       "Zotero-API-Key": `${getZoteroApiKey()}`,
     },
@@ -43,6 +49,7 @@ function zoteroSearch(url, start, callback, zoteroSearchResults) {
   httpRequest(opts)
     .then(function (data) {
       var items = JSON.parse(data.response);
+      // summarize results and accumulate them into the array zoteroItems
       items.forEach(function (item) {
         var result = {
           key: item.key,
@@ -51,92 +58,154 @@ function zoteroSearch(url, start, callback, zoteroSearchResults) {
           title: item.data.title,
           url: item.data.url,
           itemType: item.data.itemType,
+          tags: item.data.tags,
         }
-        zoteroSearchResults.push(result);
+        zoteroItems.push(result);
       });
-      var total = data.headers['total-results'];
-      logWrite(`fetching ${total} zotero items, got ${zoteroSearchResults.length} so far`);
-      if (total && zoteroSearchResults.length >= parseInt(total)) {
+      var total = parseInt(data.headers['total-results']);
+      logWrite(`fetching ${total} zotero items, got ${zoteroItems.length} so far`);
+      if (total && zoteroItems.length >= total) {
         logWrite(`got ${total} zotero items`);
-        zoteroSearchResults = zoteroSearchResults.filter(x => x.itemType != 'attachment' && x.itemType != 'note');
-        logWrite(`filtering out attachments and notes leaves ${zoteroSearchResults.length} zotero items`);
-        callback(zoteroSearchResults);
+        // remove attachments
+        zoteroItems = zoteroItems.filter(x => { return x.itemType != 'attachment' });
+        logWrite(`removing attachments leaves ${zoteroItems.length} zotero items`);
+        // collect zotero notes that represent imported hypothesis annotations
+        // it's the subset of notes with tags prefixed like 'hypothesis-BvFJGPmpRd-7d6g7_sOpFg
+        // and suffixed with hypothesis ids that are in zotero and won't be reimported
+        let _hNotes = zoteroItems.filter(x => { return x.itemType === 'note' && x.tags.length > 0 }); // filter to notes with tags
+        _hNotes = _hNotes.filter(x => { return hasHypothesisTag(x) }) // that match the prefix
+        hypothesisNotes = hypothesisNotes.concat(_hNotes); 
+        let _hKeys = _hNotes.map(x => { return x.key }); // capture zotero keys for _hNotes
+        zoteroItems = zoteroItems.filter(x => { return _hKeys.indexOf(x.key) == -1 }); // exclude _hNotes
+        processZoteroItems(hypothesisNotes, zoteroItems);
       } else {
-        start += 50;
-        zoteroSearch(url, start, callback, zoteroSearchResults);
+        // continue collecting until all pages of zotero api results are processed
+        offset += 50;
+        collectZoteroItems(url, offset, zoteroItems, hypothesisNotes, processZoteroItems);
       }
     })
     .catch(e => {
-      console.log(e);
+      logAppend(e);
     });
 }
 
-function processZoteroSearchResults(zoteroSearchResults) {
+// hypothesisNotes: zoteroItems that are child notes from hypothesis
+// zoteroItems: zoteroItems that are not child notes from hypothesis
+function processZoteroItems(hypothesisNotes, zoteroItems) {
 
-  logWrite(`processing ${zoteroSearchResults.length} zotero search results`);
-  //results = results.filter(x => x.doi != null && x.url );
-  //console.log(`filtering out results with neither a doi nor a url leaves ${results.zoteroSearchResults`);
-  var fetchWorker = new Worker('fetchAnnotations.js');
-  var fetchWorkerResults = {};
+  logWrite(`processing ${zoteroItems.length} zotero search results`);
+  // spawn a worker to fetch hypothesis annotations for zotero items
+  var annotationFetcher = new Worker('fetchAnnotations.js');
+  var annotationFetchResults = {}; 
 
-  function proceedToPostNotes() {
-    fetchWorker.terminate();
-    postNotes(fetchWorkerResults);
-  }
-
-  fetchWorker.addEventListener('message', function (e) {
+  // listen for messages from the annotation fetcher
+  annotationFetcher.addEventListener('message', function (e) {
     var key = e.data.key;
-    var url = e.data.url;
-    fetchWorkerResults[key] = e.data;
-    fetchWorkerResultCount = Object.keys(fetchWorkerResults).length;
-    logWrite(`fetchWorker got response #${fetchWorkerResultCount} of ${zoteroSearchResults.length} expected`);
-    if (fetchWorkerResultCount == zoteroSearchResults.length) {
-      logWrite(`all ${fetchWorkerResultCount} messages received from fetchWorker, calling postWorker`);
-      proceedToPostNotes();
+    annotationFetchResults[key] = e.data;
+    let fetchedCount = Object.keys(annotationFetchResults).length;
+    logWrite(`fetchWorker got response #${fetchedCount} of ${zoteroItems.length} expected`);
+    // expect as many messages as zotero items, if fewer, the app will time out
+    if (fetchedCount == zoteroItems.length) {
+      logWrite(`all ${fetchedCount} messages received from annotation fetcher, calling importer`);
+      annotationFetcher.terminate();
+      // we have hypothesis annotations for all zotero items
+      // now exclude annotations already imported 
+      // for each zotero item we have an object like:
+      /*
+      { "79LKJ9G2": {
+        ...
+        hypothesisAnno: { "rows": []}
+        ...
+        }
+      }
+      */
+      let resultsToImport = [];
+      Object.keys(annotationFetchResults).forEach(zoteroKey => {
+        let fetchedResultsForZoteroKey = annotationFetchResults[zoteroKey];
+        let candidateRows = fetchedResultsForZoteroKey.hypothesisAnnos.rows;
+        // exclude replies
+        candidateRows = candidateRows.filter(x => { return !x.references });
+        // get the ids of imported hypothesis notes
+        let excludedIds = hypothesisNotes.map(x => { 
+          let id = 'NoHypothesisId';
+          x.tags.forEach(tag => {
+            if (isHypothesisTag(tag)) {
+              id = getHypothesisIdFromZoteroTag(tag);
+            }
+          });
+          return id;
+        });
+        // filter out the excluded rows
+        let importRows = candidateRows.filter(x => { 
+          return excludedIds.indexOf(x.id) == -1;
+        })
+        // update fetched results with filtered rows
+        fetchedResultsForZoteroKey.hypothesisAnnos.rows = importRows;
+        resultsToImport = resultsToImport.concat(fetchedResultsForZoteroKey);
+      });
+      importer(resultsToImport);
     }
   });
 
-  zoteroSearchResults.forEach(function (zoteroSearchResult) {
-    fetchWorker.postMessage({
-      doi: zoteroSearchResult.doi,
-      zoteroInfo: zoteroSearchResult,
-      token: getToken(),
+  // message the worker once per zotero item
+  zoteroItems.forEach(function (zoteroItem) {
+    annotationFetcher.postMessage({
+      zoteroItem: zoteroItem,
+      token: getToken(), // hypothesis api token so worker can read private/group annotations
     });
   });
 }
 
-function postNotes(fetchWorkerResults) {
+function getHypothesisIdFromZoteroTag(tag) {
+  return tag['tag'].slice(11);
+}
+function isHypothesisTag(tag) {
+  return tag['tag'].slice(0,11) === 'hypothesis-';
+}
+
+function hasHypothesisTag(zoteroItem) {
+  var hasHypothesisTag = false;
+  zoteroItem.tags.forEach(tag => {
+    if (isHypothesisTag(tag)) {
+      hasHypothesisTag = true;
+    }
+  });
+  return hasHypothesisTag;
+}
+
+// called with a list of objects that contain a merge of zotero item info 
+// and hypothesis api search results 
+function importer(resultsToImport) {
 
   var timeoutSecs = 30;
 
   logWrite('');
 
-  var postWorker = new Worker('postNotes.js');
-  var keys = Object.keys(fetchWorkerResults);
+  var importer = new Worker('postNotes.js');
+  var zoteroKeys = Object.keys(resultsToImport);
 
   setTimeout(function () {
-    logWrite(`postWorker timeout reached, sync done`);
-    postWorker.terminate();
+//    logWrite(`timeout reached`);
+//    importer.terminate();
   }, timeoutSecs * 1000);
 
-  logWrite(`postNotes got ${keys.length} fetchWorker results`);
-  var keysWithAnnotations = keys.filter(x => fetchWorkerResults[x].hypothesisTotal > 0);
-  logWrite(`postNotes filtered fetchWorker results to ${keysWithAnnotations} with annotations`);
-  logWrite(`postNotes checking for unsynced annotations`);
-
-  postWorker.addEventListener('message', function (e) {
+  // log messages from the importer, and terminate when it reports done
+  importer.addEventListener('message', function (e) {
     logAppend(`${e.data}`);
+    if ( e.data == 'done' ) {
+      importer.terminate();  
+    }
   });
 
-  keysWithAnnotations.forEach(function (key) {
-    postWorker.postMessage({
+  zoteroKeys.forEach(function (key) {
+    // ask the worker to import annotations for a zotero item
+    importer.postMessage({
       zoteroUserId: getZoteroUserId(),
       zoteroApiKey: getZoteroApiKey(),
-      workerResult: fetchWorkerResults[key],
+      annotationsToImport: resultsToImport[key],
+      total: zoteroKeys.length,
     });
   });
-
-  self.logAppend(`postNotes done, waiting for postWorker messages, will timeout in ${timeoutSecs} seconds`);
 }
 
 var tokenContainer = getById('tokenContainer');
