@@ -3,7 +3,7 @@
 
 debugger;
 
-self.importScripts("https://jonudell.info/hlib/hlib.js");
+self.importScripts("https://jonudell.info/hlib/hlib.bundle.js");
 self.importScripts("https://jonudell.info/hlib/showdown.js");
 
 function importAnnotation(key, version, zoteroUserId, zoteroApiKey, anno) {
@@ -41,7 +41,7 @@ function importAnnotation(key, version, zoteroUserId, zoteroApiKey, anno) {
   }
 
   // call zotero api to import a hypothesis-derived child note
-  return httpRequest(opts);
+  return hlib.httpRequest(opts);
 }
 
 var zoteroItemTotal;
@@ -61,7 +61,7 @@ self.addEventListener('message', function (e) {
 
   let annoCount = 0;
   rows.forEach( function(row) {
-    var anno = parseAnnotation(row); 
+    var anno = hlib.parseAnnotation(row); 
     importAnnotation(key, version, zoteroUserId, zoteroApiKey, anno)
       .then( () =>  {
         let user = `${anno.user}`.replace('acct:','').replace('@hypothes.is','');

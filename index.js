@@ -1,27 +1,27 @@
 function logWrite(msg) {
   console.log(msg);
-  getById('viewer').innerHTML = `<div>${msg}</div>`;
+  hlib.getById('viewer').innerHTML = `<div>${msg}</div>`;
 }
 
 function logAppend(msg) {
   console.log(msg);
-  getById('viewer').innerHTML += `<div>${msg}</div>`;
+  hlib.getById('viewer').innerHTML += `<div>${msg}</div>`;
 }
 
 function setZoteroApiKey() {
-  setLocalStorageFromForm('zoteroApiKeyForm', 'h_zoteroApiKey');
+  hlib.setLocalStorageFromForm('zoteroApiKeyForm', 'h_zoteroApiKey');
 }
 
 function getZoteroApiKey() {
-  return getFromUrlParamOrLocalStorage('h_zoteroApiKey')
+  return hlib.getFromUrlParamOrLocalStorage('h_zoteroApiKey')
 }
 
 function setZoteroUserId() {
-  setLocalStorageFromForm('zoteroUserIdForm', 'h_zoteroUserId');
+  hlib.setLocalStorageFromForm('zoteroUserIdForm', 'h_zoteroUserId');
 }
 
 function getZoteroUserId() {
-  return getFromUrlParamOrLocalStorage('h_zoteroUserId')
+  return hlib.getFromUrlParamOrLocalStorage('h_zoteroUserId')
 }
 
 // main entry point, wired to sync button
@@ -46,7 +46,7 @@ function sync() {
     },
   };
 
-  httpRequest(opts)
+  hlib.httpRequest(opts)
     .then(function (data) {
       var items = JSON.parse(data.response);
       // summarize results and accumulate them into the array zoteroItems
@@ -151,7 +151,7 @@ function processZoteroItems(hypothesisNotes, zoteroItems) {
   zoteroItems.forEach(function (zoteroItem) {
     annotationFetcher.postMessage({
       zoteroItem: zoteroItem,
-      token: getToken(), // hypothesis api token so worker can read private/group annotations
+      token: hlib.getToken(), // hypothesis api token so worker can read private/group annotations
     });
   });
 }
@@ -208,11 +208,11 @@ function importer(resultsToImport) {
   });
 }
 
-var tokenContainer = getById('tokenContainer');
-createApiTokenInputForm(tokenContainer);
+var tokenContainer = hlib.getById('tokenContainer');
+hlib.createApiTokenInputForm(tokenContainer);
 
 var userArgs = {
-  element: getById('zoteroUserContainer'),
+  element: hlib.getById('zoteroUserContainer'),
   name: 'Zotero numeric user ID',
   id: 'zoteroUserId',
   value: getZoteroUserId(),
@@ -221,10 +221,10 @@ var userArgs = {
   msg: 'Zotero numeric user id from <a href="https://www.zotero.org/settings/keys">https://www.zotero.org/settings/keys</a>',
 };
 
-createNamedInputForm(userArgs);
+hlib.createNamedInputForm(userArgs);
 
 var apiKeyArgs = {
-  element: getById('zoteroApiKeyContainer'),
+  element: hlib.getById('zoteroApiKeyContainer'),
   name: 'Zotero API key',
   id: 'zoteroApiKey',
   value: getZoteroApiKey(),
@@ -233,6 +233,6 @@ var apiKeyArgs = {
   msg: 'Zotero API key from <a href="https://www.zotero.org/settings/keys">https://www.zotero.org/settings/keys</a>',
 };
 
-createNamedInputForm(apiKeyArgs);
+hlib.createNamedInputForm(apiKeyArgs);
 
 var viewer = document.getElementById("viewer");
