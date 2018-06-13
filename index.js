@@ -216,7 +216,7 @@ var userArgs = {
   name: 'Zotero numeric user ID',
   id: 'zoteroUserId',
   value: getZoteroUserId(),
-  onChange: 'setZoteroUserId',
+  onchange: 'setZoteroUserId',
   type: '',
   msg: 'Zotero numeric user id from <a href="https://www.zotero.org/settings/keys">https://www.zotero.org/settings/keys</a>',
 };
@@ -228,7 +228,7 @@ var apiKeyArgs = {
   name: 'Zotero API key',
   id: 'zoteroApiKey',
   value: getZoteroApiKey(),
-  onChange: 'setZoteroApiKey',
+  onchange: 'setZoteroApiKey',
   type: 'password',
   msg: 'Zotero API key from <a href="https://www.zotero.org/settings/keys">https://www.zotero.org/settings/keys</a>',
 };

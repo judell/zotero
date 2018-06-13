@@ -1,6 +1,6 @@
 // this web worker fetches annotations for urls of zotero items
 
-self.importScripts("https://jonudell.info/hlib/hlib.js");
+self.importScripts("https://jonudell.info/hlib/hlib.bundle.js");
 
 // listen for a request to query hypothesis for annotations on a zotero item
 self.addEventListener('message', function (e) {
@@ -24,7 +24,7 @@ self.addEventListener('message', function (e) {
   }
   
   // find hypothesis annotations on the url of a zotero item
-  httpRequest(opts)
+  hlib.httpRequest(opts)
     .then( function (data) {
       var hypothesisInfo = JSON.parse(data.response);
       // message the caller with zotero item info plus hypothesis search results
