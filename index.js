@@ -187,7 +187,9 @@ function processZoteroItems(hypothesisNotes, zoteroItems) {
 			logAppend(`zotero items with new annotations to import: ${resultsToImport.length}`)
 			if (resultsToImport.length) {
 				importer(resultsToImport)
-			}
+			} else {
+        logAppend('done')
+      }
 		}
 	})
 
