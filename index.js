@@ -220,20 +220,41 @@ function hasHypothesisTag(zoteroItem) {
 // called with a list of objects that contain a merge of zotero item info
 // and hypothesis api search results
 function importer(resultsToImport) {
-	const importWorker = new Worker('postNotes.js')
-	const zoteroKeys = Object.keys(resultsToImport)
+  const importWorker = new Worker('postNotes.js')
+  const objectKeys = Object.keys(resultsToImport)
+
+  const expectedResponses = {}
+
+  objectKeys.forEach(key => {
+    const resultToImport = resultsToImport[key]
+    expectedResponses[resultToImport.key] = resultToImport.hypothesisAnnos.length
+  })
 
 	importWorker.addEventListener('message', function(e) {
-		logAppend(e.data)
+		if (e.data.zoteroKey) {
+			expectedResponses[e.data.zoteroKey] -= 1
+		} else {
+			logAppend(e.data)
+    }
+    let done = true
+    Object.keys(expectedResponses).forEach( zoteroKey => {
+      if (expectedResponses[zoteroKey]) {
+        done = false
+      }
+    })
+		if (done) {
+			logAppend('done')
+			importWorker.terminate()
+		}
 	})
 
-	zoteroKeys.forEach(function(key) {
+	objectKeys.forEach(function(key) {
 		// ask the worker to import annotations for a zotero item
 		importWorker.postMessage({
 			zoteroUserId: getZoteroUserId(),
 			zoteroApiKey: getZoteroApiKey(),
-			annotationsToImport: resultsToImport[key],
-			total: zoteroKeys.length
+			zoteroItemKey: key,
+			annotationsToImport: resultsToImport[key]
 		})
 	})
 }
