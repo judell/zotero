@@ -1,11 +1,11 @@
 function logWrite(msg) {
 	console.log(msg)
-	hlib.getById('viewer').innerHTML = `<div>${msg}</div>`
+	hlib.getById('viewer').innerHTML = `<div class="logMessage">${msg}</div>`
 }
 
 function logAppend(msg) {
 	console.log(msg)
-	hlib.getById('viewer').innerHTML += `<div>${msg}</div>`
+	hlib.getById('viewer').innerHTML += `<div class="logMessage">${msg}</div>`
 }
 
 function setZoteroApiKey() {
@@ -29,7 +29,7 @@ function getZoteroUserId() {
 
 function _httpRequest(method, url, headers) {
 	return new Promise(function(resolve, reject) {
-		var xhr = new XMLHttpRequest()
+		const xhr = new XMLHttpRequest()
 		xhr.open(method, url)
 		for (let header of headers) {
 			const key = Object.keys(header)[0]
@@ -60,9 +60,8 @@ function _httpRequest(method, url, headers) {
 
 // main entry point, wired to sync button
 function sync() {
-	var offset = 0
-	var url = `https://www.zotero.org/api/users/${getZoteroUserId()}/items?start=${offset}`
-	collectZoteroItems(url, offset, [], [], processZoteroItems)
+	const offset = 0
+	collectZoteroItems(offset, [], [], processZoteroItems)
 }
 
 // url: zotero item enumerator
@@ -70,16 +69,16 @@ function sync() {
 // zoteroItems: accumulator for items in the zotero library
 // hypothesisNotes: subset of items that are notes imported from hypothesis
 // processZoteroItems: handler called when all items collected
-function collectZoteroItems(url, offset, zoteroItems, hypothesisNotes, processZoteroItems) {
+function collectZoteroItems(offset, zoteroItems, hypothesisNotes, processZoteroItems) {
+	const url = `https://www.zotero.org/api/users/${getZoteroUserId()}/items?start=${offset}&limit=50`
 	const headers = [ { 'Zotero-API-Key': `${getZoteroApiKey()}` }, { Authorization: `Bearer ${hlib.getToken()}` } ]
-
 	_httpRequest('get', url, headers)
 		.then(function(data) {
 			const items = JSON.parse(data.response)
 			const total = parseInt(data.total)
 			// summarize results and accumulate them into the array zoteroItems
 			items.forEach(function(item) {
-				var result = {
+				const result = {
 					key: item.key,
 					version: item.version,
 					doi: item.data.DOI ? item.data.DOI : null,
@@ -90,35 +89,42 @@ function collectZoteroItems(url, offset, zoteroItems, hypothesisNotes, processZo
 				}
 				zoteroItems.push(result)
 			})
-			logWrite(`fetching ${total} zotero items, got ${zoteroItems.length} so far`)
+			logWrite(`fetched ${zoteroItems.length} of ${total} zotero items`)
 			if (total && zoteroItems.length >= total) {
-				logWrite(`got ${total} zotero items`)
-				// remove attachments
+				logWrite('')
+				// we have all the items in the zotero library
+				// we need to query hypothesis for items that have urls, looking for annotations on them
 				zoteroItems = zoteroItems.filter((x) => {
-					return x.itemType != 'attachment'
+					let r = true
+					if (x.itemType === 'attachment') {
+						r = false // skip attachments, which have urls but are duplicative of primary types (newspaper article, blog post, etc.)
+					}
+					if (x.itemType !== 'note' && !x.url) {
+						r = false // ignore non-attachments with no url (but keep notes)
+					}
+					return r
 				})
-				logWrite(`removing attachments leaves ${zoteroItems.length} zotero items`)
 				// collect zotero notes that represent imported hypothesis annotations
 				// it's the subset of notes with tags prefixed like 'hypothesis-BvFJGPmpRd-7d6g7_sOpFg
 				// and suffixed with hypothesis ids that are in zotero and won't be reimported
-				let _hNotes = zoteroItems.filter((x) => {
-					return x.itemType === 'note' && x.tags.length > 0
-				}) // filter to notes with tags
-				_hNotes = _hNotes.filter((x) => {
-					return hasHypothesisTag(x)
-				}) // that match the prefix
-				hypothesisNotes = hypothesisNotes.concat(_hNotes)
-				let _hKeys = _hNotes.map((x) => {
+				let _hypothesisNotes = zoteroItems.filter((x) => {
+					return x.itemType === 'note' && x.tags.length > 0 && hasHypothesisTag(x)
+				}) // filter to zotero notes with hypothesis tags
+				hypothesisNotes = hypothesisNotes.concat(_hypothesisNotes)
+				let _hypothesisNoteKeys = _hypothesisNotes.map((x) => {
 					return x.key
-				}) // capture zotero keys for _hNotes
+				}) // capture zotero keys for _hypothesisNotes
 				zoteroItems = zoteroItems.filter((x) => {
-					return _hKeys.indexOf(x.key) == -1
-				}) // exclude _hNotes
+					return _hypothesisNoteKeys.indexOf(x.key) == -1
+				}) // exclude _hypothesisNotes
+				zoteroItems = zoteroItems.filter((x) => {
+					return x.url // exclude items with no url
+				})
 				processZoteroItems(hypothesisNotes, zoteroItems)
 			} else {
 				// continue collecting until all pages of zotero api results are processed
 				offset += 50
-				collectZoteroItems(url, offset, zoteroItems, hypothesisNotes, processZoteroItems)
+				collectZoteroItems(offset, zoteroItems, hypothesisNotes, processZoteroItems)
 			}
 		})
 		.catch((e) => {
@@ -129,59 +135,59 @@ function collectZoteroItems(url, offset, zoteroItems, hypothesisNotes, processZo
 // hypothesisNotes: zoteroItems that are child notes from hypothesis
 // zoteroItems: zoteroItems that are not child notes from hypothesis
 function processZoteroItems(hypothesisNotes, zoteroItems) {
-	logWrite(`processing ${zoteroItems.length} zotero search results`)
+	logAppend(`zotero items that could be annotated: ${zoteroItems.length}`)
 	// spawn a worker to fetch hypothesis annotations for zotero items
-	var annotationFetcher = new Worker('fetchAnnotations.js')
-	var annotationFetchResults = {}
+	const annotationFetcher = new Worker('fetchAnnotations.js')
+
+	const annotationFetchResults = {}
 
 	// listen for messages from the annotation fetcher
 	annotationFetcher.addEventListener('message', function(e) {
-		var key = e.data.key
-		annotationFetchResults[key] = e.data
+		annotationFetchResults[e.data.key] = e.data
 		let fetchedCount = Object.keys(annotationFetchResults).length
-		logWrite(`fetchWorker got response #${fetchedCount} of ${zoteroItems.length} expected`)
+		//logWrite(`fetchWorker got response #${fetchedCount} of ${zoteroItems.length} expected`)
 		// expect as many messages as zotero items, if fewer, the app will time out
 		if (fetchedCount == zoteroItems.length) {
-			logWrite(`all ${fetchedCount} messages received from annotation fetcher, calling importer`)
+			//logAppend(`all ${fetchedCount} messages received from annotation fetcher, calling importer`)
 			annotationFetcher.terminate()
-			// we have hypothesis annotations for all zotero items
-			// now exclude annotations already imported
-			// for each zotero item we have an object like:
-			/*
-      { "79LKJ9G2": {
-        ...
-        hypothesisAnno: { "rows": []}
-        ...
-        }
-      }
-      */
+
+			// get the ids of imported hypothesis notes
+			let excludedIds = hypothesisNotes.map((x) => {
+				let id = 'NoHypothesisId'
+				x.tags.forEach((tag) => {
+					if (isHypothesisTag(tag)) {
+						id = getHypothesisIdFromZoteroTag(tag)
+					}
+				})
+				return id
+			})
+
 			let resultsToImport = []
-			Object.keys(annotationFetchResults).forEach((zoteroKey) => {
-				let fetchedResultsForZoteroKey = annotationFetchResults[zoteroKey]
-				let candidateRows = fetchedResultsForZoteroKey.hypothesisAnnos.rows
+
+			const zoteroKeys = Object.keys(annotationFetchResults)
+			for (let i = 0; i < zoteroKeys.length; i++) {
+				const fetchedResultForZoteroKey = annotationFetchResults[zoteroKeys[i]]
+				if (fetchedResultForZoteroKey.hypothesisTotal == 0) {
+					continue
+				}
+				let candidateAnnos = fetchedResultForZoteroKey.hypothesisAnnos
 				// exclude replies
-				candidateRows = candidateRows.filter((x) => {
+				candidateAnnos = candidateAnnos.filter((x) => {
 					return !x.references
 				})
-				// get the ids of imported hypothesis notes
-				let excludedIds = hypothesisNotes.map((x) => {
-					let id = 'NoHypothesisId'
-					x.tags.forEach((tag) => {
-						if (isHypothesisTag(tag)) {
-							id = getHypothesisIdFromZoteroTag(tag)
-						}
-					})
-					return id
-				})
 				// filter out the excluded rows
-				let importRows = candidateRows.filter((x) => {
+				const importAnnos = candidateAnnos.filter((x) => {
 					return excludedIds.indexOf(x.id) == -1
 				})
-				// update fetched results with filtered rows
-				fetchedResultsForZoteroKey.hypothesisAnnos.rows = importRows
-				resultsToImport = resultsToImport.concat(fetchedResultsForZoteroKey)
-			})
-			importer(resultsToImport)
+				fetchedResultForZoteroKey.hypothesisAnnos = importAnnos
+				if (importAnnos.length) {
+					resultsToImport.push(fetchedResultForZoteroKey)
+				}
+			}
+			logAppend(`zotero items with new annotations to import: ${resultsToImport.length}`)
+			if (resultsToImport.length) {
+				importer(resultsToImport)
+			}
 		}
 	})
 
@@ -202,7 +208,7 @@ function isHypothesisTag(tag) {
 }
 
 function hasHypothesisTag(zoteroItem) {
-	var hasHypothesisTag = false
+	let hasHypothesisTag = false
 	zoteroItem.tags.forEach((tag) => {
 		if (isHypothesisTag(tag)) {
 			hasHypothesisTag = true
@@ -214,29 +220,16 @@ function hasHypothesisTag(zoteroItem) {
 // called with a list of objects that contain a merge of zotero item info
 // and hypothesis api search results
 function importer(resultsToImport) {
-	var timeoutSecs = 30
+	const importWorker = new Worker('postNotes.js')
+	const zoteroKeys = Object.keys(resultsToImport)
 
-	logWrite('')
-
-	var importer = new Worker('postNotes.js')
-	var zoteroKeys = Object.keys(resultsToImport)
-
-	setTimeout(function() {
-		//    logWrite(`timeout reached`)
-		//    importer.terminate()
-	}, timeoutSecs * 1000)
-
-	// log messages from the importer, and terminate when it reports done
-	importer.addEventListener('message', function(e) {
-		logAppend(`${e.data}`)
-		if (e.data == 'done') {
-			importer.terminate()
-		}
+	importWorker.addEventListener('message', function(e) {
+		logAppend(e.data)
 	})
 
 	zoteroKeys.forEach(function(key) {
 		// ask the worker to import annotations for a zotero item
-		importer.postMessage({
+		importWorker.postMessage({
 			zoteroUserId: getZoteroUserId(),
 			zoteroApiKey: getZoteroApiKey(),
 			annotationsToImport: resultsToImport[key],
@@ -245,10 +238,10 @@ function importer(resultsToImport) {
 	})
 }
 
-var tokenContainer = hlib.getById('tokenContainer')
+const tokenContainer = hlib.getById('tokenContainer')
 hlib.createApiTokenInputForm(tokenContainer)
 
-var userArgs = {
+const userArgs = {
 	element: hlib.getById('zoteroUserContainer'),
 	name: 'Zotero numeric user ID',
 	id: 'zoteroUserId',
@@ -261,7 +254,7 @@ var userArgs = {
 
 hlib.createNamedInputForm(userArgs)
 
-var apiKeyArgs = {
+const apiKeyArgs = {
 	element: hlib.getById('zoteroApiKeyContainer'),
 	name: 'Zotero API key',
 	id: 'zoteroApiKey',
@@ -273,4 +266,4 @@ var apiKeyArgs = {
 
 hlib.createNamedInputForm(apiKeyArgs)
 
-var viewer = document.getElementById('viewer')
+const viewer = document.getElementById('viewer')

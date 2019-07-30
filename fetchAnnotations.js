@@ -1,17 +1,18 @@
 // this web worker fetches annotations for urls of zotero items
 
+debugger
+
 self.importScripts('https://jonudell.info/hlib/hlib2.bundle.js')
 
 // listen for a request to query hypothesis for annotations on a zotero item
 self.addEventListener('message', function(e) {
-	var doi = e.data.zoteroItem.doi
-	var url = e.data.zoteroItem.url
-	var key = e.data.zoteroItem.key
-	var token = e.data.token
+	const url = e.data.zoteroItem.url
+	const key = e.data.zoteroItem.key
+	const token = e.data.token
 
-	var hypothesisQuery = `https://hypothes.is/api/search?uri=doi:${doi}&uri=${url}`
+	const hypothesisQuery = `https://hypothes.is/api/search?uri=${url}`
 
-	var opts = {
+	const opts = {
 		method: 'get',
 		url: hypothesisQuery
 	}
@@ -27,7 +28,7 @@ self.addEventListener('message', function(e) {
 	hlib
 		.httpRequest(opts)
 		.then(function(data) {
-			var hypothesisInfo = JSON.parse(data.response)
+			const hypothesisInfo = JSON.parse(data.response)
 			// message the caller with zotero item info plus hypothesis search results
 			self.postMessage({
 				key: key,
@@ -35,7 +36,7 @@ self.addEventListener('message', function(e) {
 				url: e.data.zoteroItem.url,
 				title: e.data.zoteroItem.title,
 				doi: e.data.zoteroItem.doi,
-				hypothesisAnnos: JSON.parse(data.response),
+				hypothesisAnnos: hypothesisInfo.rows,
 				hypothesisTotal: hypothesisInfo.total
 			})
 		})
