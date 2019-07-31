@@ -5,6 +5,7 @@ self.importScripts('https://jonudell.info/hlib/hlib2.bundle.js')
 self.importScripts('https://jonudell.info/hlib/showdown.js')
 debugger
 
+// import a hypothesis annnotation as a zotero child note
 function importAnnotation(zoteroKey, zoteroUserId, zoteroApiKey, anno) {
 	const converter = new Showdown.converter()
 	const quote = anno.quote != '' ? `<blockquote>${anno.quote}</blockquote>` : ''
@@ -46,7 +47,7 @@ function importAnnotation(zoteroKey, zoteroUserId, zoteroApiKey, anno) {
 	return hlib.httpRequest(opts)
 }
 
-// listen for requests to import annotations for a zotero item
+// listen for a request to import one or more hypothesis annotations for a zotero item
 self.addEventListener('message', function(e) {
 	const zoteroUserId = e.data.zoteroUserId
   const zoteroApiKey = e.data.zoteroApiKey

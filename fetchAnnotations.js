@@ -24,7 +24,7 @@ self.addEventListener('message', function(e) {
 		}
 	}
 
-	// find hypothesis annotations on the url of a zotero item
+	// find hypothesis annotations for a zotero item
 	hlib
 		.httpRequest(opts)
 		.then(function(data) {

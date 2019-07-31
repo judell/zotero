@@ -64,8 +64,7 @@ function sync() {
 	collectZoteroItems(offset, [], [], processZoteroItems)
 }
 
-// url: zotero item enumerator
-// offset: for api paging
+// offset: for zotero api paging
 // zoteroItems: accumulator for items in the zotero library
 // hypothesisNotes: subset of items that are notes imported from hypothesis
 // processZoteroItems: handler called when all items collected
@@ -99,25 +98,25 @@ function collectZoteroItems(offset, zoteroItems, hypothesisNotes, processZoteroI
 					if (x.itemType === 'attachment') {
 						r = false // skip attachments, which have urls but are duplicative of primary types (newspaper article, blog post, etc.)
 					}
-					if (x.itemType !== 'note' && !x.url) {
-						r = false // ignore non-attachments with no url (but keep notes)
+					if (!x.url && x.itemType !== 'note') {
+						r = false // skip other items with no url, but keep notes so we can avoid duplicate imports
 					}
 					return r
 				})
 				// collect zotero notes that represent imported hypothesis annotations
 				// it's the subset of notes with tags prefixed like 'hypothesis-BvFJGPmpRd-7d6g7_sOpFg
 				// and suffixed with hypothesis ids that are in zotero and won't be reimported
-				let _hypothesisNotes = zoteroItems.filter((x) => {
-					return x.itemType === 'note' && x.tags.length > 0 && hasHypothesisTag(x)
-				}) // filter to zotero notes with hypothesis tags
+				let _hypothesisNotes = zoteroItems.filter( x => {
+					return x.itemType === 'note' && x.tags.length > 0 && hasHypothesisTag(x) // only zotero notes with hypothesis tags
+				}) 
 				hypothesisNotes = hypothesisNotes.concat(_hypothesisNotes)
-				let _hypothesisNoteKeys = _hypothesisNotes.map((x) => {
-					return x.key
-				}) // capture zotero keys for _hypothesisNotes
-				zoteroItems = zoteroItems.filter((x) => {
-					return _hypothesisNoteKeys.indexOf(x.key) == -1
-				}) // exclude _hypothesisNotes
-				zoteroItems = zoteroItems.filter((x) => {
+				let _hypothesisNoteKeys = _hypothesisNotes.map( x => {
+					return x.key // capture zotero keys 
+				}) 
+				zoteroItems = zoteroItems.filter( x => {
+					return _hypothesisNoteKeys.indexOf(x.key) == -1 // exclude _hypothesisNotes
+				}) 
+				zoteroItems = zoteroItems.filter( x => {
 					return x.url // exclude items with no url
 				})
 				processZoteroItems(hypothesisNotes, zoteroItems)
@@ -219,13 +218,13 @@ function hasHypothesisTag(zoteroItem) {
 	return hasHypothesisTag
 }
 
-// called with a list of objects that contain a merge of zotero item info
-// and hypothesis api search results
+// a web worker called with a list of objects that contain a merge of 
+// zotero item info and hypothesis api search results
 function importer(resultsToImport) {
   const importWorker = new Worker('postNotes.js')
   const objectKeys = Object.keys(resultsToImport)
 
-  const expectedResponses = {}
+  const expectedResponses = {} 
 
   objectKeys.forEach(key => {
     const resultToImport = resultsToImport[key]
@@ -234,14 +233,14 @@ function importer(resultsToImport) {
 
 	importWorker.addEventListener('message', function(e) {
 		if (e.data.zoteroKey) {
-			expectedResponses[e.data.zoteroKey] -= 1
+			expectedResponses[e.data.zoteroKey] -= 1 
 		} else {
 			logAppend(e.data)
     }
     let done = true
     Object.keys(expectedResponses).forEach( zoteroKey => {
       if (expectedResponses[zoteroKey]) {
-        done = false
+        done = false // we haven't yet received all the messages for this key
       }
     })
 		if (done) {
