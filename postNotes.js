@@ -1,7 +1,8 @@
 // this web worker imports hypothesis annotations into zotero as child notes
 // it adds a zotero tag to each imported note like 'hypothesis-BvFJGPmpRd-7d6g7_sOpFg'
 
-self.importScripts('https://jonudell.info/hlib/hlib2.bundle.js')
+// use hlib, not hlib2, because no web components in this environment
+self.importScripts('https://jonudell.info/hlib/hlib.bundle.js')
 self.importScripts('https://jonudell.info/hlib/showdown.js')
 debugger
 
@@ -60,7 +61,7 @@ self.addEventListener('message', function(e) {
 			.then( _ => {
 				let user = `${anno.user}`.replace('acct:', '').replace('@hypothes.is', '')
 				self.postMessage(
-					`imported <a target="_anno" href="https://hypothes.is/a/${anno.id}">${anno.id}</a> by <b>${user}</b> on <b>${anno.url}</b>`
+					`imported <a class="url" target="_anno" href="https://hypothes.is/a/${anno.id}">${anno.id}</a> by ${user} on ${anno.url}`
         )
         self.postMessage({
           zoteroKey: zoteroKey // echo back the zotero key so caller can track progress

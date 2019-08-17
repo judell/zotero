@@ -2,7 +2,8 @@
 
 debugger
 
-self.importScripts('https://jonudell.info/hlib/hlib2.bundle.js')
+// use hlib, not hlib2, because no web components in this environment
+self.importScripts('https://jonudell.info/hlib/hlib.bundle.js')
 
 // listen for a request to query hypothesis for annotations on a zotero item
 self.addEventListener('message', function(e) {
@@ -15,7 +16,7 @@ self.addEventListener('message', function(e) {
 	const opts = {
 		method: 'get',
 		url: hypothesisQuery
-	}
+  }
 
 	if (token) {
 		opts.headers = {
@@ -40,11 +41,8 @@ self.addEventListener('message', function(e) {
 				hypothesisTotal: hypothesisInfo.total
 			})
 		})
-		.catch(function(e) {
-			self.postMessage({
-				error: e,
-				key: key,
-				url: url
-			})
+		.catch( function(e) {
+      const msg = `fetchAnnotations failed: ${opts.url}, ${data.response}, ${JSON.stringify(e)}`
+			self.postMessage(msg)
 		})
 })
