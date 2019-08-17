@@ -50,6 +50,7 @@ function _httpRequest(method, url, headers) {
 		}
 		xhr.onerror = function() {
 			reject({
+				url: url,
 				status: this.status,
 				statusText: xhr.statusText
 			})
@@ -76,7 +77,7 @@ function collectZoteroItems(offset, zoteroItems, hypothesisNotes, processZoteroI
 			const items = JSON.parse(data.response)
 			const total = parseInt(data.total)
 			// summarize results and accumulate them into the array zoteroItems
-			items.forEach(function(item) {
+			items.forEach(item => {
 				const result = {
 					key: item.key,
 					version: item.version,
@@ -93,7 +94,7 @@ function collectZoteroItems(offset, zoteroItems, hypothesisNotes, processZoteroI
 				logWrite('')
 				// we have all the items in the zotero library
 				// we need to query hypothesis for items that have urls, looking for annotations on them
-				zoteroItems = zoteroItems.filter((x) => {
+				zoteroItems = zoteroItems.filter(x => {
 					let r = true
 					if (x.itemType === 'attachment') {
 						r = false // skip attachments, which have urls but are duplicative of primary types (newspaper article, blog post, etc.)
@@ -106,17 +107,17 @@ function collectZoteroItems(offset, zoteroItems, hypothesisNotes, processZoteroI
 				// collect zotero notes that represent imported hypothesis annotations
 				// it's the subset of notes with tags prefixed like 'hypothesis-BvFJGPmpRd-7d6g7_sOpFg
 				// and suffixed with hypothesis ids that are in zotero and won't be reimported
-				let _hypothesisNotes = zoteroItems.filter( x => {
+				let _hypothesisNotes = zoteroItems.filter(x => {
 					return x.itemType === 'note' && x.tags.length > 0 && hasHypothesisTag(x) // only zotero notes with hypothesis tags
-				}) 
+				})
 				hypothesisNotes = hypothesisNotes.concat(_hypothesisNotes)
-				let _hypothesisNoteKeys = _hypothesisNotes.map( x => {
-					return x.key // capture zotero keys 
-				}) 
-				zoteroItems = zoteroItems.filter( x => {
+				let _hypothesisNoteKeys = _hypothesisNotes.map(x => {
+					return x.key // capture zotero keys
+				})
+				zoteroItems = zoteroItems.filter(x => {
 					return _hypothesisNoteKeys.indexOf(x.key) == -1 // exclude _hypothesisNotes
-				}) 
-				zoteroItems = zoteroItems.filter( x => {
+				})
+				zoteroItems = zoteroItems.filter(x => {
 					return x.url // exclude items with no url
 				})
 				processZoteroItems(hypothesisNotes, zoteroItems)
@@ -127,7 +128,7 @@ function collectZoteroItems(offset, zoteroItems, hypothesisNotes, processZoteroI
 			}
 		})
 		.catch((e) => {
-			logAppend(e)
+			logAppend(JSON.stringify(e))
 		})
 }
 
@@ -151,9 +152,9 @@ function processZoteroItems(hypothesisNotes, zoteroItems) {
 			annotationFetcher.terminate()
 
 			// get the ids of imported hypothesis notes
-			let excludedIds = hypothesisNotes.map((x) => {
+			let excludedIds = hypothesisNotes.map(x => {
 				let id = 'NoHypothesisId'
-				x.tags.forEach((tag) => {
+				x.tags.forEach(tag => {
 					if (isHypothesisTag(tag)) {
 						id = getHypothesisIdFromZoteroTag(tag)
 					}
@@ -171,11 +172,11 @@ function processZoteroItems(hypothesisNotes, zoteroItems) {
 				}
 				let candidateAnnos = fetchedResultForZoteroKey.hypothesisAnnos
 				// exclude replies
-				candidateAnnos = candidateAnnos.filter((x) => {
+				candidateAnnos = candidateAnnos.filter(x => {
 					return !x.references
 				})
 				// filter out the excluded rows
-				const importAnnos = candidateAnnos.filter((x) => {
+				const importAnnos = candidateAnnos.filter(x => {
 					return excludedIds.indexOf(x.id) == -1
 				})
 				fetchedResultForZoteroKey.hypothesisAnnos = importAnnos
@@ -187,13 +188,13 @@ function processZoteroItems(hypothesisNotes, zoteroItems) {
 			if (resultsToImport.length) {
 				importer(resultsToImport)
 			} else {
-        logAppend('done')
-      }
+				logAppend('done')
+			}
 		}
 	})
 
 	// message the worker once per zotero item
-	zoteroItems.forEach(function(zoteroItem) {
+	zoteroItems.forEach(zoteroItem => {
 		annotationFetcher.postMessage({
 			zoteroItem: zoteroItem,
 			token: hlib.getToken() // hypothesis api token so worker can read private/group annotations
@@ -210,7 +211,7 @@ function isHypothesisTag(tag) {
 
 function hasHypothesisTag(zoteroItem) {
 	let hasHypothesisTag = false
-	zoteroItem.tags.forEach((tag) => {
+	zoteroItem.tags.forEach(tag => {
 		if (isHypothesisTag(tag)) {
 			hasHypothesisTag = true
 		}
@@ -218,38 +219,38 @@ function hasHypothesisTag(zoteroItem) {
 	return hasHypothesisTag
 }
 
-// a web worker called with a list of objects that contain a merge of 
+// a web worker called with a list of objects that contain a merge of
 // zotero item info and hypothesis api search results
 function importer(resultsToImport) {
-  const importWorker = new Worker('postNotes.js')
-  const objectKeys = Object.keys(resultsToImport)
+	const importWorker = new Worker('postNotes.js')
+	const objectKeys = Object.keys(resultsToImport)
 
-  const expectedResponses = {} 
+	const expectedResponses = {}
 
-  objectKeys.forEach(key => {
-    const resultToImport = resultsToImport[key]
-    expectedResponses[resultToImport.key] = resultToImport.hypothesisAnnos.length
-  })
+	objectKeys.forEach(key => {
+		const resultToImport = resultsToImport[key]
+		expectedResponses[resultToImport.key] = resultToImport.hypothesisAnnos.length
+	})
 
 	importWorker.addEventListener('message', function(e) {
 		if (e.data.zoteroKey) {
-			expectedResponses[e.data.zoteroKey] -= 1 
+			expectedResponses[e.data.zoteroKey] -= 1
 		} else {
 			logAppend(e.data)
-    }
-    let done = true
-    Object.keys(expectedResponses).forEach( zoteroKey => {
-      if (expectedResponses[zoteroKey]) {
-        done = false // we haven't yet received all the messages for this key
-      }
-    })
+		}
+		let done = true
+		Object.keys(expectedResponses).forEach(zoteroKey => {
+			if (expectedResponses[zoteroKey]) {
+				done = false // we haven't yet received all the messages for this key
+			}
+		})
 		if (done) {
 			logAppend('done')
 			importWorker.terminate()
 		}
 	})
 
-	objectKeys.forEach(function(key) {
+	objectKeys.forEach(key => {
 		// ask the worker to import annotations for a zotero item
 		importWorker.postMessage({
 			zoteroUserId: getZoteroUserId(),
