@@ -13,4 +13,4 @@ If you update an annotation in Hypothesis, it won't resync to Zotero unless you 
 
 Only top-level annotations will sync, replies are ignored.
 
-Demo: http://jonudell.info/h/zotero-sync-01.mp4
+Demo: http://jonudell.info/h/zotero-sync-02.mp4
