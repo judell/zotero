@@ -1,7 +1,5 @@
 // this web worker fetches annotations for urls of zotero items
 
-debugger
-
 // use hlib, not hlib2, because no web components in this environment
 self.importScripts('https://jonudell.info/hlib/hlib.bundle.js')
 

@@ -4,7 +4,6 @@
 // use hlib, not hlib2, because no web components in this environment
 self.importScripts('https://jonudell.info/hlib/hlib.bundle.js')
 self.importScripts('https://jonudell.info/hlib/showdown.js')
-debugger
 
 // import a hypothesis annnotation as a zotero child note
 function importAnnotation(zoteroKey, zoteroUserId, zoteroApiKey, anno) {
