@@ -60,7 +60,8 @@ self.addEventListener('message', e => {
 			.then(_ => {
 				let user = `${anno.user}`.replace('acct:', '').replace('@hypothes.is', '')
 				self.postMessage(
-					`imported <a class="url" target="_anno" href="https://hypothes.is/a/${anno.id}">${anno.id}</a> by ${user} on ${anno.url}`
+          `imported <a class="url" target="_anno" href="https://hypothes.is/a/${anno.id}">${anno.id}</a>
+           by ${user} on ${anno.url}`
 				)
 				self.postMessage({
 					zoteroKey: zoteroKey // echo back the zotero key so caller can track progress

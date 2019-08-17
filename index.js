@@ -271,8 +271,8 @@ const userArgs = {
 	value: getZoteroUserId(),
 	onchange: setZoteroUserId,
 	type: '',
-	msg:
-		'Zotero numeric user id from <a href="https://www.zotero.org/settings/keys">https://www.zotero.org/settings/keys</a>'
+  msg: `Zotero numeric user id from 
+    <a href="https://www.zotero.org/settings/keys">https://www.zotero.org/settings/keys</a>`
 }
 
 hlib.createNamedInputForm(userArgs)
@@ -284,7 +284,8 @@ const apiKeyArgs = {
 	value: getZoteroApiKey(),
 	onchange: setZoteroApiKey,
 	type: 'password',
-	msg: 'Zotero API key from <a href="https://www.zotero.org/settings/keys">https://www.zotero.org/settings/keys</a>'
+  msg: `Zotero API key from 
+    <a href="https://www.zotero.org/settings/keys">https://www.zotero.org/settings/keys</a>`
 }
 
 hlib.createNamedInputForm(apiKeyArgs)
