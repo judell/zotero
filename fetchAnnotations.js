@@ -6,7 +6,7 @@ debugger
 self.importScripts('https://jonudell.info/hlib/hlib.bundle.js')
 
 // listen for a request to query hypothesis for annotations on a zotero item
-self.addEventListener('message', function(e) {
+self.addEventListener('message', e => {
 	const url = e.data.zoteroItem.url
 	const key = e.data.zoteroItem.key
 	const token = e.data.token
@@ -16,7 +16,7 @@ self.addEventListener('message', function(e) {
 	const opts = {
 		method: 'get',
 		url: hypothesisQuery
-  }
+	}
 
 	if (token) {
 		opts.headers = {
@@ -28,7 +28,7 @@ self.addEventListener('message', function(e) {
 	// find hypothesis annotations for a zotero item
 	hlib
 		.httpRequest(opts)
-		.then(function(data) {
+		.then( data => {
 			const hypothesisInfo = JSON.parse(data.response)
 			// message the caller with zotero item info plus hypothesis search results
 			self.postMessage({
@@ -41,8 +41,8 @@ self.addEventListener('message', function(e) {
 				hypothesisTotal: hypothesisInfo.total
 			})
 		})
-		.catch( function(e) {
-      const msg = `fetchAnnotations failed: ${opts.url}, ${data.response}, ${JSON.stringify(e)}`
+		.catch( e => {
+			const msg = `fetchAnnotations failed: ${opts.url}, ${data.response}, ${JSON.stringify(e)}`
 			self.postMessage(msg)
 		})
 })
