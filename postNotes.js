@@ -47,28 +47,33 @@ function importAnnotation(zoteroKey, zoteroUserId, zoteroApiKey, anno) {
 	return hlib.httpRequest(opts)
 }
 
+function delaySeconds(seconds) {
+	return new Promise((resolve) => setTimeout(resolve, seconds * 1000))
+}
+
 // listen for a request to import one or more hypothesis annotations for a zotero item
 self.addEventListener('message', e => {
 	const zoteroUserId = e.data.zoteroUserId
 	const zoteroApiKey = e.data.zoteroApiKey
 	const zoteroKey = e.data.annotationsToImport.key
 	const rows = e.data.annotationsToImport.hypothesisAnnos
+	processRows(rows)
 
-	rows.forEach(row => {
-		const anno = hlib.parseAnnotation(row)
-		importAnnotation(zoteroKey, zoteroUserId, zoteroApiKey, anno)
-			.then(_ => {
-				let user = `${anno.user}`.replace('acct:', '').replace('@hypothes.is', '')
-				self.postMessage(
-          `imported <a class="url" target="_anno" href="https://hypothes.is/a/${anno.id}">${anno.id}</a>
-           by ${user} on ${anno.url}`
-				)
-				self.postMessage({
-					zoteroKey: zoteroKey // echo back the zotero key so caller can track progress
-				})
+	async function processRows(rows) {
+		debugger
+		for (let i = 0; i < rows.length; i++) {
+			await delaySeconds(.1)
+			const anno = hlib.parseAnnotation(rows[i])
+			const result = await(importAnnotation(zoteroKey, zoteroUserId, zoteroApiKey, anno))
+			const user = `${anno.user}`.replace('acct:', '').replace('@hypothes.is', '')
+			self.postMessage(
+				`imported <a class="url" target="_anno" href="https://hypothes.is/a/${anno.id}">${anno.id}</a>
+				by ${user} on ${anno.url}`
+			)
+			self.postMessage({
+				zoteroKey: zoteroKey // echo back the zotero key so caller can track progress
 			})
-			.catch(e => {
-				self.postMessage(e)
-			})
-	})
+		}
+	}
+	
 })
