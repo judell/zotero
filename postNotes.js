@@ -60,7 +60,6 @@ self.addEventListener('message', e => {
 	processRows(rows)
 
 	async function processRows(rows) {
-		debugger
 		for (let i = 0; i < rows.length; i++) {
 			await delaySeconds(.1)
 			const anno = hlib.parseAnnotation(rows[i])
